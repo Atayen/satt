@@ -1,5 +1,9 @@
 pragma solidity ^0.4.16;
 
+contract TokenInterface {
+    function transfer(address to, uint256 value) public returns (bool success);
+}
+
 
 contract owned {
     address public owner;
@@ -19,9 +23,11 @@ contract owned {
 }
 
 
-contract Platform is owned {
+contract AtayenPlatform is owned {
 		enum typeOffer {CPL,CPC,CPM}
 		enum status {NotExists,Added,Validated,Ended}
+		
+		address tokenContract;
 
 		struct Offer {
 			address editor;
@@ -66,10 +72,25 @@ contract Platform is owned {
 		Click[] clicks;
 		Hit[] hits;
 		
+		 event Buy(address a,uint256 v,bytes d);
+		
+		function AtayenPlatform (address token_ctr) public {
+		    tokenContract = token_ctr;
+		}
+		
 		
 		modifier onlyTracker {
             require(trackers[msg.sender].id != 0x0 );
             _;
+        }
+        
+         function tokenFallback(address _from, uint _value, bytes _data) public {
+           require(msg.sender == tokenContract);
+            Buy(_from,_value,_data);
+        }
+        
+        function transfer(uint256 value)   onlyOwner public{
+              TokenInterface(tokenContract).transfer(owner,value);
         }
 		
 		
