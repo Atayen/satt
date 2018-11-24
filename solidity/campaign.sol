@@ -63,6 +63,13 @@ interface IOracle {
 contract campaign is oracleClient {
     
     enum status {NotExists,Prepared,Validated,Running,Ended}
+    enum promStatus {NotExists,Inited,Validated,Rejected}
+    
+    struct cpRatio {
+        uint256 likeRatio;
+        uint256 shareRatio;
+        uint256 viewRatio;
+    }
     
     struct Campaign {
 		address advertiser;
@@ -73,7 +80,7 @@ contract campaign is oracleClient {
 		uint64 nbProms;
 		mapping (uint64 => bytes32) proms;
 		Fund funds;
-		uint256 cpc; 	//CPC ratio
+		mapping(uint8 => cpRatio) ratios;
 	}
 	
 	
@@ -83,6 +90,7 @@ contract campaign is oracleClient {
 	}
 	
 	struct Result  {
+	    bytes32 idProm;
 	    uint64 likes;
 	    uint64 shares;
 	    uint64 views;
@@ -90,11 +98,15 @@ contract campaign is oracleClient {
 	
 	struct promElement {
 	    address influencer;
+	    bytes32 idCampaign;
+	    Fund funds;
+	    promStatus status;
 	    uint8 typeSN;
 	    string idPost;
 	    string idUser;
 	    uint64 nbResults;
 	    mapping (uint64 => bytes32) results;
+	    bytes32 prevResult;
 	}
 
 	
@@ -106,6 +118,7 @@ contract campaign is oracleClient {
 	event CampaignCreated(bytes32 indexed id );
 	event CampaignStarted(bytes32 indexed id );
 	event CampaignEnded(bytes32 indexed id );
+	event CampaignFundsSpent(bytes32 indexed id );
 	event CampaignApplied(bytes32 indexed id ,bytes32 indexed prom );
 	
 	event oracleResult( bytes32 idRequest,uint64 likes,uint64 shares,uint64 views);
@@ -116,12 +129,15 @@ contract campaign is oracleClient {
         require(endDate > now);
         require(endDate < startDate);
         bytes32 campaignId = keccak256(abi.encodePacked(msg.sender,dataUrl,startDate,endDate,now));
-        campaigns[campaignId] = Campaign(msg.sender,dataUrl,startDate,endDate,status.Prepared,0,Fund(0,0),0);
+        campaigns[campaignId] = Campaign(msg.sender,dataUrl,startDate,endDate,status.Prepared,0,Fund(0,0));
         emit CampaignCreated(campaignId);
         return campaignId;
     }
     
+    
+    
     function modCampaign(bytes32 idCampaign,string dataUrl,	uint32 startDate,uint32 endDate) public {
+        require(campaigns[idCampaign].advertiser == msg.sender);
         require(startDate > now);
         require(endDate > now);
         require(endDate < startDate);
@@ -129,7 +145,12 @@ contract campaign is oracleClient {
         campaigns[idCampaign].dataUrl = dataUrl;
         campaigns[idCampaign].startDate = startDate;
         campaigns[idCampaign].endDate = endDate;
-        
+    }
+    
+     function priceCampaign(bytes32 idCampaign,uint8 typeSN,uint256 likeRatio,uint256 shareRatio,uint256 viewRatio) public {
+        require(campaigns[idCampaign].advertiser == msg.sender);
+        require(campaigns[idCampaign].campaignState == status.Prepared);
+        campaigns[idCampaign].ratios[typeSN] = cpRatio(likeRatio,shareRatio,viewRatio);
     }
     
     function fundCampaign (bytes32 idCampaign,address token,uint256 amount) public {
@@ -148,10 +169,28 @@ contract campaign is oracleClient {
         // only Campaign owner ? param 
         require(campaigns[idCampaign].campaignState == status.Prepared);
         idProm = keccak256(abi.encodePacked( msg.sender,typeSN,idPost,idUser,now));
-        proms[idProm] = promElement(msg.sender,typeSN,idPost,idUser,0);
+        proms[idProm] = promElement(msg.sender,idCampaign,Fund(0,0),promStatus.NotExists,typeSN,idPost,idUser,0,0);
         campaigns[idCampaign].proms[campaigns[idCampaign].nbProms++] = idProm;
+        
+        bytes32 idRequest = keccak256(abi.encodePacked(typeSN,idPost,idUser,now));
+        results[idRequest] = Result(idProm,0,0,0);
+        proms[idProm].results[0] = proms[idProm].prevResult = idRequest;
+        proms[idProm].nbResults = 1;
+        
+        ask(typeSN,idPost,idUser,idRequest);
+        
         emit CampaignApplied(idCampaign,idProm);
         return idProm;
+    }
+    
+    function validateProm(bytes32 idCampaign,bytes32 idProm,bool accepted) public {
+        require(campaigns[idCampaign].campaignState == status.Prepared);
+        require(campaigns[idCampaign].advertiser == msg.sender);
+        require(proms[idProm].idCampaign == idCampaign);
+        if(accepted)
+            proms[idProm].status = promStatus.Validated;
+        else
+            proms[idProm].status = promStatus.Rejected;
     }
     
     
@@ -166,8 +205,11 @@ contract campaign is oracleClient {
         for(uint64 i = 0;i < campaigns[idCampaign].nbProms ;i++)
         {
             bytes32 idProm = campaigns[idCampaign].proms[i];
+            if(proms[idProm].status != promStatus.Validated ) {
+                revert();
+            }
             bytes32 idRequest = keccak256(abi.encodePacked(proms[idProm].typeSN,proms[idProm].idPost,proms[idProm].idUser,now));
-            results[idRequest] = Result(0,0,0);
+            results[idRequest] = Result(idProm,0,0,0);
             proms[idProm].results[proms[idProm].nbResults++] = idRequest;
             ask(proms[idProm].typeSN,proms[idProm].idPost,proms[idProm].idUser,idRequest);
         }
@@ -191,6 +233,22 @@ contract campaign is oracleClient {
         results[idRequest].likes = likes;
         results[idRequest].shares = shares;
         results[idRequest].views = views;
+        promElement storage prom = proms[results[idRequest].idProm];
+      
+        uint256 gain = (likes - results[prom.prevResult].likes)* campaigns[prom.idCampaign].ratios[prom.typeSN].likeRatio;
+        gain += (shares - results[prom.prevResult].shares)* campaigns[prom.idCampaign].ratios[prom.typeSN].shareRatio;
+        gain += (views - results[prom.prevResult].views)* campaigns[prom.idCampaign].ratios[prom.typeSN].viewRatio;
+        prom.prevResult = idRequest;
+        //
+        // warn campaign low credits
+        //
+        if(campaigns[prom.idCampaign].funds.amount < gain )
+        {
+            emit CampaignFundsSpent(idCampaign);
+            return true;
+        }
+        campaigns[prom.idCampaign].funds.amount -= gain;
+        prom.funds.amount += gain;
         return true;
     }
     
