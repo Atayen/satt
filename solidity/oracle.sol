@@ -1,7 +1,7 @@
-pragma solidity ^0.4.25;
+pragma solidity ^0.5;
 
 contract owned {
-    address public owner;
+    address payable public owner;
 
     constructor () public {
         owner = msg.sender;
@@ -12,7 +12,7 @@ contract owned {
         _;
     }
 
-    function transferOwnership(address newOwner) onlyOwner public {
+    function transferOwnership(address payable newOwner) onlyOwner public {
         owner = newOwner;
     }
 }
@@ -52,7 +52,7 @@ contract oracle is limited {
     event AskRequest(bytes32 indexed idRequest, uint8 typeSN, string idPost,string idUser);
     event AnswerRequest(bytes32 indexed idRequest, uint64 likes, uint64 shares, uint64 views);
     
-    function  ask (uint8 typeSN,string idPost,string idUser, bytes32 idRequest) public onlyCanAsk
+    function  ask (uint8 typeSN,string memory idPost,string memory idUser, bytes32 idRequest) public onlyCanAsk
     {
         emit AskRequest(idRequest, typeSN, idPost, idUser );
     }
@@ -63,7 +63,7 @@ contract oracle is limited {
         emit AnswerRequest(idRequest,likes,shares,views);
     }
     
-    function() public payable {}
+    function() external payable {}
     
     function withdraw() onlyOwner public {
         owner.transfer(address(this).balance);
@@ -75,3 +75,5 @@ contract oracle is limited {
     }
     
 }
+
+//touched

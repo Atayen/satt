@@ -1,7 +1,7 @@
-pragma solidity ^0.4.25;
+pragma solidity ^0.5;
 
 contract owned {
-    address public owner;
+    address payable public owner;
 
     constructor () public {
         owner = msg.sender;
@@ -12,7 +12,7 @@ contract owned {
         _;
     }
 
-    function transferOwnership(address newOwner) onlyOwner public {
+    function transferOwnership(address payable newOwner) onlyOwner public {
         owner = newOwner;
     }
 }
@@ -33,7 +33,7 @@ contract ERC20Holder is owned {
        require(acceptedTokens[msg.sender]);
     }
     
-    function() public payable {}
+    function() external  payable {}
     
     function withdraw() onlyOwner public {
         owner.transfer(address(this).balance);
@@ -56,7 +56,7 @@ contract oracleClient is ERC20Holder {
 }
 
 interface IOracle {
-    function  ask (uint8 typeSN,string idPost,string idUser, bytes32 idRequest) external;
+    function  ask (uint8 typeSN, string calldata idPost,string calldata idUser, bytes32 idRequest) external;
 }
 
 
@@ -124,19 +124,19 @@ contract campaign is oracleClient {
 	event oracleResult( bytes32 idRequest,uint64 likes,uint64 shares,uint64 views);
 	
     
-    function createCampaign(string dataUrl,	uint32 startDate,uint32 endDate) public returns (bytes32 idCampaign) {
+    function createCampaign(string memory dataUrl,	uint32 startDate,uint32 endDate) public returns (bytes32 idCampaign) {
         require(startDate > now);
         require(endDate > now);
         require(endDate < startDate);
         bytes32 campaignId = keccak256(abi.encodePacked(msg.sender,dataUrl,startDate,endDate,now));
-        campaigns[campaignId] = Campaign(msg.sender,dataUrl,startDate,endDate,status.Prepared,0,Fund(0,0));
+        campaigns[campaignId] = Campaign(msg.sender,dataUrl,startDate,endDate,status.Prepared,0,Fund(address(0),0));
         emit CampaignCreated(campaignId);
         return campaignId;
     }
     
     
     
-    function modCampaign(bytes32 idCampaign,string dataUrl,	uint32 startDate,uint32 endDate) public {
+    function modCampaign(bytes32 idCampaign,string memory dataUrl,	uint32 startDate,uint32 endDate) public {
         require(campaigns[idCampaign].advertiser == msg.sender);
         require(startDate > now);
         require(endDate > now);
@@ -165,11 +165,11 @@ contract campaign is oracleClient {
         campaigns[idCampaign].funds = Fund(token,amount+prev_amount);
     }
     
-    function applyCampaign(bytes32 idCampaign,uint8 typeSN, string idPost, string idUser) public returns (bytes32 idProm) {
+    function applyCampaign(bytes32 idCampaign,uint8 typeSN, string memory idPost, string memory idUser) public returns (bytes32 idProm) {
         // only Campaign owner ? param 
         require(campaigns[idCampaign].campaignState == status.Prepared);
         idProm = keccak256(abi.encodePacked( msg.sender,typeSN,idPost,idUser,now));
-        proms[idProm] = promElement(msg.sender,idCampaign,Fund(0,0),promStatus.NotExists,typeSN,idPost,idUser,0,0);
+        proms[idProm] = promElement(msg.sender,idCampaign,Fund(address(0),0),promStatus.NotExists,typeSN,idPost,idUser,0,0);
         campaigns[idCampaign].proms[campaigns[idCampaign].nbProms++] = idProm;
         
         bytes32 idRequest = keccak256(abi.encodePacked(typeSN,idPost,idUser,now));
@@ -222,7 +222,7 @@ contract campaign is oracleClient {
     }
     
     
-    function ask(uint8 typeSN, string idPost,string idUser,bytes32 idRequest) public {
+    function ask(uint8 typeSN, string memory idPost,string memory idUser,bytes32 idRequest) public {
         IOracle o = IOracle(oracle);
         o.ask(typeSN,idPost,idUser,idRequest);
     }
@@ -244,7 +244,7 @@ contract campaign is oracleClient {
         //
         if(campaigns[prom.idCampaign].funds.amount < gain )
         {
-            emit CampaignFundsSpent(idCampaign);
+            emit CampaignFundsSpent(prom.idCampaign);
             return true;
         }
         campaigns[prom.idCampaign].funds.amount -= gain;
@@ -253,3 +253,5 @@ contract campaign is oracleClient {
     }
     
 }
+
+//touched
