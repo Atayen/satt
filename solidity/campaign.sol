@@ -252,6 +252,18 @@ contract campaign is oracleClient {
         return true;
     }
     
+    function getGains(bytes32 idProm) public {
+        require(proms[idProm].influencer == msg.sender);
+        IERC20 erc20 = IERC20(proms[idProm].funds.token);
+        erc20.transferFrom(address(this),proms[idProm].influencer,proms[idProm].funds.amount);
+        proms[idProm].funds.amount = 0;
+    }
+    
+    function getRemainingFunds(bytes32 idCampaign) public {
+        require(campaigns[idCampaign].advertiser == msg.sender);
+        IERC20 erc20 = IERC20(campaigns[idCampaign].funds.token);
+        erc20.transferFrom(address(this),campaigns[idCampaign].advertiser,campaigns[idCampaign].funds.amount);
+        campaigns[idCampaign].funds.amount = 0;
+    }
+    
 }
-
-//touched

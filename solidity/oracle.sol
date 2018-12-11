@@ -75,5 +75,3 @@ contract oracle is limited {
     }
     
 }
-
-//touched
