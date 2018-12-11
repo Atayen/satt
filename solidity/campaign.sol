@@ -154,7 +154,7 @@ contract campaign is oracleClient {
     }
     
     function fundCampaign (bytes32 idCampaign,address token,uint256 amount) public {
-        require(campaigns[idCampaign].campaignState == status.Prepared);
+        require(campaigns[idCampaign].campaignState == status.Prepared || campaigns[idCampaign].campaignState == status.Running);
         require(acceptedTokens[token]);
         require(campaigns[idCampaign].funds.token == address(0) || campaigns[idCampaign].funds.token == token);
        
@@ -167,7 +167,7 @@ contract campaign is oracleClient {
     
     function applyCampaign(bytes32 idCampaign,uint8 typeSN, string memory idPost, string memory idUser) public returns (bytes32 idProm) {
         // only Campaign owner ? param 
-        require(campaigns[idCampaign].campaignState == status.Prepared);
+       require(campaigns[idCampaign].campaignState == status.Prepared || campaigns[idCampaign].campaignState == status.Running);
         idProm = keccak256(abi.encodePacked( msg.sender,typeSN,idPost,idUser,now));
         proms[idProm] = promElement(msg.sender,idCampaign,Fund(address(0),0),promStatus.NotExists,typeSN,idPost,idUser,0,0);
         campaigns[idCampaign].proms[campaigns[idCampaign].nbProms++] = idProm;
@@ -184,7 +184,7 @@ contract campaign is oracleClient {
     }
     
     function validateProm(bytes32 idCampaign,bytes32 idProm,bool accepted) public {
-        require(campaigns[idCampaign].campaignState == status.Prepared);
+        require(campaigns[idCampaign].campaignState == status.Prepared || campaigns[idCampaign].campaignState == status.Running);
         require(campaigns[idCampaign].advertiser == msg.sender);
         require(proms[idProm].idCampaign == idCampaign);
         if(accepted)
@@ -195,7 +195,7 @@ contract campaign is oracleClient {
     
     
     function startCampaign(bytes32 idCampaign) public onlyOwner {
-         require(campaigns[idCampaign].campaignState == status.Validated);
+         require(campaigns[idCampaign].campaignState == status.Prepared);
          campaigns[idCampaign].campaignState == status.Running;
          emit CampaignStarted(idCampaign);
     }
@@ -244,6 +244,8 @@ contract campaign is oracleClient {
         //
         if(campaigns[prom.idCampaign].funds.amount < gain )
         {
+            campaigns[prom.idCampaign].campaignState == status.Ended;
+            emit CampaignEnded(prom.idCampaign);
             emit CampaignFundsSpent(prom.idCampaign);
             return true;
         }
