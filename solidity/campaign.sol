@@ -115,7 +115,7 @@ contract campaign is oracleClient {
 	mapping (bytes32  => Result) results;
 	
 	
-	event CampaignCreated(bytes32 indexed id );
+	event CampaignCreated(bytes32 indexed id,uint32 startDate,uint32 endDate,string dataUrl);
 	event CampaignStarted(bytes32 indexed id );
 	event CampaignEnded(bytes32 indexed id );
 	event CampaignFundsSpent(bytes32 indexed id );
@@ -130,7 +130,7 @@ contract campaign is oracleClient {
         require(endDate < startDate);
         bytes32 campaignId = keccak256(abi.encodePacked(msg.sender,dataUrl,startDate,endDate,now));
         campaigns[campaignId] = Campaign(msg.sender,dataUrl,startDate,endDate,status.Prepared,0,Fund(address(0),0));
-        emit CampaignCreated(campaignId);
+        emit CampaignCreated(campaignId,startDate,endDate,dataUrl);
         return campaignId;
     }
     
@@ -145,6 +145,7 @@ contract campaign is oracleClient {
         campaigns[idCampaign].dataUrl = dataUrl;
         campaigns[idCampaign].startDate = startDate;
         campaigns[idCampaign].endDate = endDate;
+        emit CampaignCreated(idCampaign,startDate,endDate,dataUrl);
     }
     
      function priceCampaign(bytes32 idCampaign,uint8 typeSN,uint256 likeRatio,uint256 shareRatio,uint256 viewRatio) public {
@@ -197,6 +198,7 @@ contract campaign is oracleClient {
     function startCampaign(bytes32 idCampaign) public onlyOwner {
          require(campaigns[idCampaign].campaignState == status.Prepared);
          campaigns[idCampaign].campaignState == status.Running;
+         campaigns[idCampaign].startDate = uint32(now);
          emit CampaignStarted(idCampaign);
     }
     
@@ -218,6 +220,7 @@ contract campaign is oracleClient {
     function endCampaign(bytes32 idCampaign) public onlyOwner {
         require(campaigns[idCampaign].campaignState == status.Running);
         campaigns[idCampaign].campaignState == status.Ended;
+        campaigns[idCampaign].endDate = uint32(now);
         emit CampaignEnded(idCampaign);
     }
     
