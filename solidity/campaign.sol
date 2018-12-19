@@ -1,4 +1,5 @@
 pragma solidity ^0.5;
+pragma experimental ABIEncoderV2;
 
 contract owned {
     address payable public owner;
@@ -20,7 +21,7 @@ contract owned {
 interface IERC20 {
    function transfer(address _to, uint256 _value) external;
    
-   function transferFrom(address _from, address _to, uint256 _value) external returns (bool success) ;
+   function transferFrom(address _from, address _to, uint256 _value) external returns (bool success);
 }
 
 contract ERC20Holder is owned {
@@ -29,8 +30,9 @@ contract ERC20Holder is owned {
         acceptedTokens[token] = accepted;
     }
     
-    function tokenFallback(/*address _from, uint _value, bytes _data*/) view public {
-       require(acceptedTokens[msg.sender]);
+    function tokenFallback(address _from, uint _value, bytes memory _data) pure public returns (bytes32 hash) {
+        bytes32 tokenHash = keccak256(abi.encodePacked(_from,_value,_data));
+        return tokenHash;
     }
     
     function() external  payable {}
@@ -110,9 +112,9 @@ contract campaign is oracleClient {
 	}
 
 	
-	mapping (bytes32  => Campaign) campaigns;
-	mapping (bytes32  => promElement) proms;
-	mapping (bytes32  => Result) results;
+	mapping (bytes32  => Campaign) public campaigns;
+	mapping (bytes32  => promElement) public proms;
+	mapping (bytes32  => Result) public results;
 	
 	
 	event CampaignCreated(bytes32 indexed id,uint32 startDate,uint32 endDate,string dataUrl);
@@ -123,11 +125,12 @@ contract campaign is oracleClient {
 	
 	event oracleResult( bytes32 idRequest,uint64 likes,uint64 shares,uint64 views);
 	
+	
     
     function createCampaign(string memory dataUrl,	uint32 startDate,uint32 endDate) public returns (bytes32 idCampaign) {
         require(startDate > now);
         require(endDate > now);
-        require(endDate < startDate);
+        require(endDate > startDate);
         bytes32 campaignId = keccak256(abi.encodePacked(msg.sender,dataUrl,startDate,endDate,now));
         campaigns[campaignId] = Campaign(msg.sender,dataUrl,startDate,endDate,status.Prepared,0,Fund(address(0),0));
         emit CampaignCreated(campaignId,startDate,endDate,dataUrl);
@@ -140,7 +143,7 @@ contract campaign is oracleClient {
         require(campaigns[idCampaign].advertiser == msg.sender);
         require(startDate > now);
         require(endDate > now);
-        require(endDate < startDate);
+        require(endDate > startDate);
         require(campaigns[idCampaign].campaignState == status.Prepared);
         campaigns[idCampaign].dataUrl = dataUrl;
         campaigns[idCampaign].startDate = startDate;
@@ -156,7 +159,7 @@ contract campaign is oracleClient {
     
     function fundCampaign (bytes32 idCampaign,address token,uint256 amount) public {
         require(campaigns[idCampaign].campaignState == status.Prepared || campaigns[idCampaign].campaignState == status.Running);
-        require(acceptedTokens[token]);
+        //require(acceptedTokens[token]);
         require(campaigns[idCampaign].funds.token == address(0) || campaigns[idCampaign].funds.token == token);
        
         IERC20 erc20 = IERC20(token);
@@ -168,7 +171,7 @@ contract campaign is oracleClient {
     
     function applyCampaign(bytes32 idCampaign,uint8 typeSN, string memory idPost, string memory idUser) public returns (bytes32 idProm) {
         // only Campaign owner ? param 
-       require(campaigns[idCampaign].campaignState == status.Prepared || campaigns[idCampaign].campaignState == status.Running);
+        require(campaigns[idCampaign].campaignState == status.Prepared || campaigns[idCampaign].campaignState == status.Running);
         idProm = keccak256(abi.encodePacked( msg.sender,typeSN,idPost,idUser,now));
         proms[idProm] = promElement(msg.sender,idCampaign,Fund(address(0),0),promStatus.NotExists,typeSN,idPost,idUser,0,0);
         campaigns[idCampaign].proms[campaigns[idCampaign].nbProms++] = idProm;
@@ -195,9 +198,9 @@ contract campaign is oracleClient {
     }
     
     
-    function startCampaign(bytes32 idCampaign) public onlyOwner {
+    function startCampaign(bytes32 idCampaign) public  {
          require(campaigns[idCampaign].campaignState == status.Prepared);
-         campaigns[idCampaign].campaignState == status.Running;
+         campaigns[idCampaign].campaignState = status.Running;
          campaigns[idCampaign].startDate = uint32(now);
          emit CampaignStarted(idCampaign);
     }
@@ -217,9 +220,9 @@ contract campaign is oracleClient {
         }
     }
     
-    function endCampaign(bytes32 idCampaign) public onlyOwner {
+    function endCampaign(bytes32 idCampaign) public  {
         require(campaigns[idCampaign].campaignState == status.Running);
-        campaigns[idCampaign].campaignState == status.Ended;
+        campaigns[idCampaign].campaignState = status.Ended;
         campaigns[idCampaign].endDate = uint32(now);
         emit CampaignEnded(idCampaign);
     }
@@ -232,6 +235,7 @@ contract campaign is oracleClient {
     
     
     function update(bytes32 idRequest,uint64 likes,uint64 shares,uint64 views) external  returns (bool ok) {
+        require(msg.sender == oracle);
         emit oracleResult(idRequest,likes,shares,views);
         results[idRequest].likes = likes;
         results[idRequest].shares = shares;
@@ -245,9 +249,15 @@ contract campaign is oracleClient {
         //
         // warn campaign low credits
         //
+        if(prom.funds.token == address(0))
+        {
+            prom.funds.token = campaigns[prom.idCampaign].funds.token;
+        }
         if(campaigns[prom.idCampaign].funds.amount < gain )
         {
-            campaigns[prom.idCampaign].campaignState == status.Ended;
+            campaigns[prom.idCampaign].campaignState = status.Ended;
+            prom.funds.amount += campaigns[prom.idCampaign].funds.amount;
+            campaigns[prom.idCampaign].funds.amount = 0;
             emit CampaignEnded(prom.idCampaign);
             emit CampaignFundsSpent(prom.idCampaign);
             return true;
@@ -260,15 +270,54 @@ contract campaign is oracleClient {
     function getGains(bytes32 idProm) public {
         require(proms[idProm].influencer == msg.sender);
         IERC20 erc20 = IERC20(proms[idProm].funds.token);
-        erc20.transferFrom(address(this),proms[idProm].influencer,proms[idProm].funds.amount);
+        erc20.transfer(proms[idProm].influencer,proms[idProm].funds.amount);
         proms[idProm].funds.amount = 0;
     }
     
     function getRemainingFunds(bytes32 idCampaign) public {
         require(campaigns[idCampaign].advertiser == msg.sender);
         IERC20 erc20 = IERC20(campaigns[idCampaign].funds.token);
-        erc20.transferFrom(address(this),campaigns[idCampaign].advertiser,campaigns[idCampaign].funds.amount);
+        erc20.transfer(campaigns[idCampaign].advertiser,campaigns[idCampaign].funds.amount);
         campaigns[idCampaign].funds.amount = 0;
+    }
+    
+    function getProms (bytes32 idCampaign) public view returns (bytes32[] memory cproms)
+    {
+        uint nbProms = campaigns[idCampaign].nbProms;
+        cproms = new bytes32[](nbProms);
+        
+        for (uint64 i = 0;i<nbProms;i++)
+        {
+            cproms[i] = campaigns[idCampaign].proms[i];
+        }
+        return cproms;
+    }
+    
+    function getRatios (bytes32 idCampaign) public view returns (uint8[] memory types,uint256[] memory likeRatios,uint256[] memory shareRatios,uint256[] memory viewRatios )
+    {
+        types = new uint8[](4);
+        likeRatios = new uint256[](4);
+        shareRatios = new uint256[](4);
+        viewRatios = new uint256[](4);
+        for (uint8 i = 0;i<4;i++)
+        {
+            types[i] = i+1;
+            likeRatios[i] = campaigns[idCampaign].ratios[i+1].likeRatio;
+            shareRatios[i] = campaigns[idCampaign].ratios[i+1].shareRatio;
+            viewRatios[i] = campaigns[idCampaign].ratios[i+1].viewRatio;
+        }
+        return (types,likeRatios,shareRatios,viewRatios);
+    }
+    
+    function getResults (bytes32 idProm) public view returns (bytes32[] memory creq)
+    {
+        uint nbResults = proms[idProm].nbResults;
+        creq = new bytes32[](nbResults);
+        for (uint64 i = 0;i<nbResults;i++)
+        {
+            creq[i] = proms[idProm].results[i];
+        }
+        return creq;
     }
     
 }
