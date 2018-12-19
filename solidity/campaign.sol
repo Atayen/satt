@@ -199,6 +199,7 @@ contract campaign is oracleClient {
     
     
     function startCampaign(bytes32 idCampaign) public  {
+         require(campaigns[idCampaign].advertiser == msg.sender);
          require(campaigns[idCampaign].campaignState == status.Prepared);
          campaigns[idCampaign].campaignState = status.Running;
          campaigns[idCampaign].startDate = uint32(now);
@@ -221,6 +222,7 @@ contract campaign is oracleClient {
     }
     
     function endCampaign(bytes32 idCampaign) public  {
+        require(campaigns[idCampaign].advertiser == msg.sender);
         require(campaigns[idCampaign].campaignState == status.Running);
         campaigns[idCampaign].campaignState = status.Ended;
         campaigns[idCampaign].endDate = uint32(now);
