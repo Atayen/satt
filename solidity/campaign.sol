@@ -199,7 +199,7 @@ contract campaign is oracleClient {
     
     
     function startCampaign(bytes32 idCampaign) public  {
-         require(campaigns[idCampaign].advertiser == msg.sender);
+         require(campaigns[idCampaign].advertiser == msg.sender || msg.sender == owner );
          require(campaigns[idCampaign].campaignState == status.Prepared);
          campaigns[idCampaign].campaignState = status.Running;
          campaigns[idCampaign].startDate = uint32(now);
@@ -211,18 +211,18 @@ contract campaign is oracleClient {
         for(uint64 i = 0;i < campaigns[idCampaign].nbProms ;i++)
         {
             bytes32 idProm = campaigns[idCampaign].proms[i];
-            if(proms[idProm].status != promStatus.Validated ) {
-                revert();
+            if(proms[idProm].status == promStatus.Validated ) {
+                bytes32 idRequest = keccak256(abi.encodePacked(proms[idProm].typeSN,proms[idProm].idPost,proms[idProm].idUser,now));
+                results[idRequest] = Result(idProm,0,0,0);
+                proms[idProm].results[proms[idProm].nbResults++] = idRequest;
+                ask(proms[idProm].typeSN,proms[idProm].idPost,proms[idProm].idUser,idRequest);
             }
-            bytes32 idRequest = keccak256(abi.encodePacked(proms[idProm].typeSN,proms[idProm].idPost,proms[idProm].idUser,now));
-            results[idRequest] = Result(idProm,0,0,0);
-            proms[idProm].results[proms[idProm].nbResults++] = idRequest;
-            ask(proms[idProm].typeSN,proms[idProm].idPost,proms[idProm].idUser,idRequest);
+            
         }
     }
     
     function endCampaign(bytes32 idCampaign) public  {
-        require(campaigns[idCampaign].advertiser == msg.sender);
+        require(campaigns[idCampaign].advertiser == msg.sender || msg.sender == owner );
         require(campaigns[idCampaign].campaignState == status.Running);
         campaigns[idCampaign].campaignState = status.Ended;
         campaigns[idCampaign].endDate = uint32(now);
