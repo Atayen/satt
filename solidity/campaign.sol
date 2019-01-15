@@ -65,7 +65,8 @@ interface IOracle {
 contract campaign is oracleClient {
     
     enum status {NotExists,Prepared,Validated,Running,Ended}
-    enum promStatus {NotExists,Inited,Validated,Rejected}
+    enum promStatus {NotExists,Inited,Validated,Rejected,Paid}
+    enum RewardType {None,Ratio,Reach}
     
     struct cpRatio {
         uint256 likeRatio;
@@ -73,16 +74,26 @@ contract campaign is oracleClient {
         uint256 viewRatio;
     }
     
+    struct Reach {
+        uint256 likeReach;
+        uint256 shareReach;
+        uint256 viewReach;
+        uint256 reward;
+    }
+    
     struct Campaign {
 		address advertiser;
 		string dataUrl; // IPFS link hosted by us
-		uint32 startDate;
-		uint32 endDate;
+		uint64 startDate;
+		uint64 endDate;
 		status campaignState;
+		RewardType rewardType;
 		uint64 nbProms;
 		mapping (uint64 => bytes32) proms;
 		Fund funds;
 		mapping(uint8 => cpRatio) ratios;
+		mapping(uint8 => Reach) reachs;
+		uint256 reserve;
 	}
 	
 	
@@ -117,7 +128,7 @@ contract campaign is oracleClient {
 	mapping (bytes32  => Result) public results;
 	
 	
-	event CampaignCreated(bytes32 indexed id,uint32 startDate,uint32 endDate,string dataUrl);
+	event CampaignCreated(bytes32 indexed id,uint64 startDate,uint64 endDate,string dataUrl,uint8 reward);
 	event CampaignStarted(bytes32 indexed id );
 	event CampaignEnded(bytes32 indexed id );
 	event CampaignFundsSpent(bytes32 indexed id );
@@ -127,39 +138,50 @@ contract campaign is oracleClient {
 	
 	
     
-    function createCampaign(string memory dataUrl,	uint32 startDate,uint32 endDate) public returns (bytes32 idCampaign) {
+    function createCampaign(string memory dataUrl,	uint64 startDate,uint64 endDate,uint8 reward) public returns (bytes32 idCampaign) {
         require(startDate > now);
         require(endDate > now);
         require(endDate > startDate);
+        require(reward > 0 && reward < 3);
         bytes32 campaignId = keccak256(abi.encodePacked(msg.sender,dataUrl,startDate,endDate,now));
-        campaigns[campaignId] = Campaign(msg.sender,dataUrl,startDate,endDate,status.Prepared,0,Fund(address(0),0));
-        emit CampaignCreated(campaignId,startDate,endDate,dataUrl);
+        campaigns[campaignId] = Campaign(msg.sender,dataUrl,startDate,endDate,status.Prepared,RewardType(reward),0,Fund(address(0),0),0);
+        emit CampaignCreated(campaignId,startDate,endDate,dataUrl,reward);
         return campaignId;
     }
     
     
     
-    function modCampaign(bytes32 idCampaign,string memory dataUrl,	uint32 startDate,uint32 endDate) public {
+    function modCampaign(bytes32 idCampaign,string memory dataUrl,	uint64 startDate,uint64 endDate,uint8 reward) public {
         require(campaigns[idCampaign].advertiser == msg.sender);
         require(startDate > now);
         require(endDate > now);
         require(endDate > startDate);
         require(campaigns[idCampaign].campaignState == status.Prepared);
+        require(reward > 0 && reward < 3);
         campaigns[idCampaign].dataUrl = dataUrl;
         campaigns[idCampaign].startDate = startDate;
         campaigns[idCampaign].endDate = endDate;
-        emit CampaignCreated(idCampaign,startDate,endDate,dataUrl);
+        campaigns[idCampaign].rewardType = RewardType(reward);
+        emit CampaignCreated(idCampaign,startDate,endDate,dataUrl,reward);
     }
     
-     function priceCampaign(bytes32 idCampaign,uint8 typeSN,uint256 likeRatio,uint256 shareRatio,uint256 viewRatio) public {
+     function priceRatioCampaign(bytes32 idCampaign,uint8 typeSN,uint256 likeRatio,uint256 shareRatio,uint256 viewRatio) public {
         require(campaigns[idCampaign].advertiser == msg.sender);
         require(campaigns[idCampaign].campaignState == status.Prepared);
+        require(campaigns[idCampaign].rewardType == RewardType.Ratio);
         campaigns[idCampaign].ratios[typeSN] = cpRatio(likeRatio,shareRatio,viewRatio);
+    }
+    
+    function priceReachCampaign(bytes32 idCampaign,uint8 typeSN,uint256 likeReach,uint256 shareReach,uint256 viewReach,uint256 rewardAmount) public {
+        require(campaigns[idCampaign].advertiser == msg.sender);
+        require(campaigns[idCampaign].campaignState == status.Prepared);
+        require(campaigns[idCampaign].rewardType == RewardType.Reach);
+        campaigns[idCampaign].reachs[typeSN] = Reach(likeReach,shareReach,viewReach,rewardAmount);
     }
     
     function fundCampaign (bytes32 idCampaign,address token,uint256 amount) public {
         require(campaigns[idCampaign].campaignState == status.Prepared || campaigns[idCampaign].campaignState == status.Running);
-        //require(acceptedTokens[token]);
+        
         require(campaigns[idCampaign].funds.token == address(0) || campaigns[idCampaign].funds.token == token);
        
         IERC20 erc20 = IERC20(token);
@@ -167,10 +189,11 @@ contract campaign is oracleClient {
         uint256 prev_amount = campaigns[idCampaign].funds.amount;
         
         campaigns[idCampaign].funds = Fund(token,amount+prev_amount);
+        campaigns[idCampaign].reserve += amount;
     }
     
     function applyCampaign(bytes32 idCampaign,uint8 typeSN, string memory idPost, string memory idUser) public returns (bytes32 idProm) {
-        // only Campaign owner ? param 
+        
         require(campaigns[idCampaign].campaignState == status.Prepared || campaigns[idCampaign].campaignState == status.Running);
         idProm = keccak256(abi.encodePacked( msg.sender,typeSN,idPost,idUser,now));
         proms[idProm] = promElement(msg.sender,idCampaign,Fund(address(0),0),promStatus.NotExists,typeSN,idPost,idUser,0,0);
@@ -191,10 +214,19 @@ contract campaign is oracleClient {
         require(campaigns[idCampaign].campaignState == status.Prepared || campaigns[idCampaign].campaignState == status.Running);
         require(campaigns[idCampaign].advertiser == msg.sender);
         require(proms[idProm].idCampaign == idCampaign);
+        
         if(accepted)
             proms[idProm].status = promStatus.Validated;
         else
             proms[idProm].status = promStatus.Rejected;
+        
+        if(campaigns[idCampaign].rewardType == RewardType.Reach)
+        {
+            uint256 amount = campaigns[idCampaign].reachs[proms[idProm].typeSN].reward;
+            require(campaigns[idCampaign].reserve > amount);
+            campaigns[idCampaign].reserve -= amount;
+        }
+        
     }
     
     
@@ -222,8 +254,11 @@ contract campaign is oracleClient {
     }
     
     function endCampaign(bytes32 idCampaign) public  {
-        require(campaigns[idCampaign].advertiser == msg.sender || msg.sender == owner );
         require(campaigns[idCampaign].campaignState == status.Running);
+        if(campaigns[idCampaign].rewardType == RewardType.Reach) {
+            require(msg.sender == owner );
+        }
+        require(campaigns[idCampaign].advertiser == msg.sender || msg.sender == owner );
         campaigns[idCampaign].campaignState = status.Ended;
         campaigns[idCampaign].endDate = uint32(now);
         emit CampaignEnded(idCampaign);
@@ -243,14 +278,49 @@ contract campaign is oracleClient {
         results[idRequest].shares = shares;
         results[idRequest].views = views;
         promElement storage prom = proms[results[idRequest].idProm];
-      
-        uint256 gain = (likes - results[prom.prevResult].likes)* campaigns[prom.idCampaign].ratios[prom.typeSN].likeRatio;
-        gain += (shares - results[prom.prevResult].shares)* campaigns[prom.idCampaign].ratios[prom.typeSN].shareRatio;
-        gain += (views - results[prom.prevResult].views)* campaigns[prom.idCampaign].ratios[prom.typeSN].viewRatio;
-        prom.prevResult = idRequest;
-        //
-        // warn campaign low credits
-        //
+        uint256 gain = 0;
+        
+        if(campaigns[prom.idCampaign].rewardType == RewardType.Ratio)
+        {
+            gain = (likes - results[prom.prevResult].likes)* campaigns[prom.idCampaign].ratios[prom.typeSN].likeRatio;
+            gain += (shares - results[prom.prevResult].shares)* campaigns[prom.idCampaign].ratios[prom.typeSN].shareRatio;
+            gain += (views - results[prom.prevResult].views)* campaigns[prom.idCampaign].ratios[prom.typeSN].viewRatio;
+            prom.prevResult = idRequest;
+            //
+            // warn campaign low credits
+            //
+        }
+        if(campaigns[prom.idCampaign].rewardType == RewardType.Ratio)
+        {
+            uint64 likesDiff = likes - results[prom.prevResult].likes;
+            uint64 sharesDiff = shares - results[prom.prevResult].shares;
+            uint64 viewsDiff = views - results[prom.prevResult].views;
+            
+            if(campaigns[prom.idCampaign].reachs[prom.typeSN].likeReach > 0 )
+            {
+                if( campaigns[prom.idCampaign].reachs[prom.typeSN].likeReach <= likesDiff )
+                {
+                    gain = campaigns[prom.idCampaign].reachs[prom.typeSN].reward;
+                }
+            }
+            if(campaigns[prom.idCampaign].reachs[prom.typeSN].shareReach > 0 )
+            {
+                if( campaigns[prom.idCampaign].reachs[prom.typeSN].shareReach <= sharesDiff )
+                {
+                    gain = campaigns[prom.idCampaign].reachs[prom.typeSN].reward;
+                }
+            }
+            if(campaigns[prom.idCampaign].reachs[prom.typeSN].viewReach > 0 )
+            {
+                if( campaigns[prom.idCampaign].reachs[prom.typeSN].viewReach <= viewsDiff )
+                {
+                    gain = campaigns[prom.idCampaign].reachs[prom.typeSN].reward;
+                }
+            }
+            prom.status = promStatus.Paid;
+            
+        }
+        
         if(prom.funds.token == address(0))
         {
             prom.funds.token = campaigns[prom.idCampaign].funds.token;
@@ -278,6 +348,7 @@ contract campaign is oracleClient {
     
     function getRemainingFunds(bytes32 idCampaign) public {
         require(campaigns[idCampaign].advertiser == msg.sender);
+        require(campaigns[idCampaign].rewardType != RewardType.Reach || campaigns[idCampaign].campaignState != status.Running);
         IERC20 erc20 = IERC20(campaigns[idCampaign].funds.token);
         erc20.transfer(campaigns[idCampaign].advertiser,campaigns[idCampaign].funds.amount);
         campaigns[idCampaign].funds.amount = 0;
@@ -296,7 +367,7 @@ contract campaign is oracleClient {
     }
     
     function getRatios (bytes32 idCampaign) public view returns (uint8[] memory types,uint256[] memory likeRatios,uint256[] memory shareRatios,uint256[] memory viewRatios )
-    {
+    {   
         types = new uint8[](4);
         likeRatios = new uint256[](4);
         shareRatios = new uint256[](4);
@@ -309,6 +380,23 @@ contract campaign is oracleClient {
             viewRatios[i] = campaigns[idCampaign].ratios[i+1].viewRatio;
         }
         return (types,likeRatios,shareRatios,viewRatios);
+    }
+    
+     function getReachs (bytes32 idCampaign) public view returns (uint8[] memory typesR,uint256[] memory likeReach,uint256[] memory shareReach,uint256[] memory viewReach,uint256[] memory rewardAmount )
+    {   
+        typesR = new uint8[](4);
+        likeReach = new uint256[](4);
+        shareReach = new uint256[](4);
+        viewReach = new uint256[](4);
+        for (uint8 i = 0;i<4;i++)
+        {
+            typesR[i] = i+1;
+            likeReach[i] = campaigns[idCampaign].reachs[i+1].likeReach;
+            shareReach[i] = campaigns[idCampaign].reachs[i+1].shareReach;
+            viewReach[i] = campaigns[idCampaign].reachs[i+1].viewReach;
+            rewardAmount[i] = campaigns[idCampaign].reachs[i+1].reward;
+        }
+        return (typesR,likeReach,shareReach,viewReach,rewardAmount);
     }
     
     function getResults (bytes32 idProm) public view returns (bytes32[] memory creq)
