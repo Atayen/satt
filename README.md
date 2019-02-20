@@ -1,4 +1,4 @@
-# satt
+# SATT
 Atayen Platform and ERC20 Token Solidity smart contract
 
 ## Camapign.sol
@@ -165,27 +165,88 @@ allow or disallow ERC20 token to fund campaign
 
 
 
-### structs
+### Objects (struct)
 
-campaign
-prom
-result
-fund
-reach
-ratio
+Campaign
+- *address* advertiser : campaign creator address (advertiser)
+- *string* dataUrl : off blockchain campaign description url
+- *uint64* startDate : campaign start date (unix timestamp in seconds)
+- *uint64* endDate : campaign end date (unix timestamp in seconds)
+- *status* campaignState : campaign status 
+- *RewardType* rewardType : minimum payment limit or not
+- *uint64* nbProms : editor counter
+- *uint64* nbValidProms : validated editor counter
+- *mapping* (uint64 => bytes32) proms : campain associated editors
+- *Fund* funds : funds available to pay editors
+- *mapping(uint8 => cpRatio)* ratios : payment ratios by social network
+- *mapping(uint8 => Reach)* reachs : minimum payment limit by social network
+
+promElement
+- *address* influencer : editor address
+- *bytes32* idCampaign : camapign identifier
+- *Fund* funds : tokens earnings available to withdraw
+- *promStatus* status : editor status
+- *uint8* typeSN: social network identifier (1:facebook,2:youtube,3:instagram,4:twitter)
+- *string* idPost : post identifier
+- *string* idUser : social network user identifier (empty for youtube)
+- *uint64* nbResults : results counter
+- *mapping (uint64 => bytes32)* results : stats array 
+- *bytes32* prevResult : last oracle stat result
+
+Result
+- *bytes32* idProm : editor identifier
+- *uint64* likes : like counts
+- *uint64* shares : share counts
+- *uint64* views : view counts
+		
+Fund
+- *address* token : token contract address
+- *uint256* amount : token amount in base units
+
+cpReach
+- *uint256* likeReach : likes number to trigger editor earning 
+- *uint256* shareReach : share number to trigger editor earning 
+- *uint256* viewReach : view number to trigger editor earning 
+
+cpRatio
+- *uint256* likeRatio : token amount earned for one like
+- *uint256* shareRatio : token amount earned for one share
+- *uint256* viewRatio : token amount earned for one view
 
 ### enums
 
 campaign state
+- NotExists
+- Prepared
+- Running
+- Ended
+
 rewardType
+- NotExists
+- Ratio
+- Reach
+
 prom state
+- NotExists
+- Validated
+- Rejected
+
 typeSN
+- Facebook
+- Youtube
+- Instagram
+- Twitter
 
 ### events
 
-CampaignCreated(bytes32 indexed id,uint64 startDate,uint64 endDate,string dataUrl,uint8 reward)
-CampaignStarted(bytes32 indexed id )
-CampaignEnded(bytes32 indexed id )
-CampaignFundsSpent(bytes32 indexed id )
-CampaignApplied(bytes32 indexed id ,bytes32 indexed prom )
-oracleResult( bytes32 idRequest,uint64 likes,uint64 shares,uint64 views)
+`CampaignCreated(bytes32 indexed id,uint64 startDate,uint64 endDate,string dataUrl,uint8 rewardType)`
+
+`CampaignStarted(bytes32 indexed id )`
+
+`CampaignEnded(bytes32 indexed id )`
+
+`CampaignFundsSpent(bytes32 indexed id )`
+
+`CampaignApplied(bytes32 indexed id ,bytes32 indexed prom )`
+
+`OracleResult( bytes32 idRequest,uint64 likes,uint64 shares,uint64 views)`
