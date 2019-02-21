@@ -237,16 +237,22 @@ typeSN
 - Instagram
 - Twitter
 
-### events
+### log events
 
 `CampaignCreated(bytes32 indexed id,uint64 startDate,uint64 endDate,string dataUrl,uint8 rewardType)`
+event raised when a campaign is created
 
 `CampaignStarted(bytes32 indexed id )`
+event raised when a campaign starts
 
 `CampaignEnded(bytes32 indexed id )`
+event raised when a campaign ends
 
 `CampaignFundsSpent(bytes32 indexed id )`
+event raised when a campaign ends due to lack of funds
 
 `CampaignApplied(bytes32 indexed id ,bytes32 indexed prom )`
+event raised when an editor applies to a campaign
 
 `OracleResult( bytes32 idRequest,uint64 likes,uint64 shares,uint64 views)`
+event raised when an oracle send stat results 
