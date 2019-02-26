@@ -5,25 +5,22 @@ Atayen Platform and ERC20 Token Solidity smart contract
 
 ### Contract methods
  
-`createCampaign(string memory dataUrl,	uint64 startDate,uint64 endDate,uint8 reward)`
+`createCampaign(string memory dataUrl,	uint64 startDate,uint64 endDate)`
 
 Creates a new campaign for an advertiser
 - dataUrl : off blockchain campaign description url
 - startDate : campaign start date 
 - endDate : campaign end date 
-- rewardType : incentive type (1 : ratio , 2 : ratio with minimum pay limit)
 returns campaign identifier (keccak256 hash)
 
 
-
-`modCampaign(bytes32 idCampaign,string memory dataUrl,	uint64 startDate,uint64 endDate,uint8 reward)`
+`modCampaign(bytes32 idCampaign,string memory dataUrl,	uint64 startDate,uint64 endDate)`
 
 modifies an existing campaign only if not started
 - idCampaign : campaign identifier
 - dataUrl : off blockchain campaign description url
 - startDate : campaign start date 
 - endDate : campaign end date 
-- rewardType : incentive type (1 : ratio , 2 : ratio with minimum pay limit)
 
 
 `fundCampaign (bytes32 idCampaign,address token,uint256 amount)`
@@ -43,15 +40,6 @@ set ratios according to a social network
 - shareRatio : base unit amount of a share in ERC20 token (facebook,Twitter only)
 - viewRatio : base unit amount of a view in ERC20 token  (youtube only)
 
-
-`priceReachCampaign(bytes32 idCampaign,uint8 typeSN,uint256 likeReach,uint256 shareReach,uint256 viewReach)`
-
-set payment limits  according to a social network
-- idCampaign : campaign identifier
-- typeSN : social network identifier (1:facebook,2:youtube,3:instagram,4:twitter)
-- likeReach : like amount to reach to enable payments 
-- shareReach :share amount to reach to enable payments 
-- viewReach : view amount to reach to enable payments   (youtube seulement)
 
 
 `createPriceFundYt(string memory dataUrl,uint64 startDate,uint64 endDate,uint256 likeRatio,uint256 viewRatio,address token,uint256 amount)`
@@ -80,12 +68,10 @@ starts camapign before start date
 - idCampaign : campaign identifier
 
 
-`validateProm(bytes32 idCampaign,bytes32 idProm,bool accepted)`
+`validateProm(bytes32 idProm)`
 
 validates editor application for an advertiser
-- idCampaign : campaign identifier
 - idProm : editor identifier
-- accepted : accepted or not (boolean)
 
 
 `endCampaign(bytes32 idCampaign)`
@@ -172,20 +158,18 @@ Campaign
 - *string* dataUrl : off blockchain campaign description url
 - *uint64* startDate : campaign start date (unix timestamp in seconds)
 - *uint64* endDate : campaign end date (unix timestamp in seconds)
-- *status* campaignState : campaign status 
-- *RewardType* rewardType : minimum payment limit or not
 - *uint64* nbProms : editor counter
 - *uint64* nbValidProms : validated editor counter
 - *mapping* (uint64 => bytes32) proms : campain associated editors
 - *Fund* funds : funds available to pay editors
 - *mapping(uint8 => cpRatio)* ratios : payment ratios by social network
-- *mapping(uint8 => Reach)* reachs : minimum payment limit by social network
+
 
 promElement
 - *address* influencer : editor address
 - *bytes32* idCampaign : camapign identifier
+- *bool* isAccepted : is editor accepted by advertiser
 - *Fund* funds : tokens earnings available to withdraw
-- *promStatus* status : editor status
 - *uint8* typeSN: social network identifier (1:facebook,2:youtube,3:instagram,4:twitter)
 - *string* idPost : post identifier
 - *string* idUser : social network user identifier (empty for youtube)
@@ -203,11 +187,6 @@ Fund
 - *address* token : token contract address
 - *uint256* amount : token amount in base units
 
-cpReach
-- *uint256* likeReach : likes number to trigger editor earning 
-- *uint256* shareReach : share number to trigger editor earning 
-- *uint256* viewReach : view number to trigger editor earning 
-
 cpRatio
 - *uint256* likeRatio : token amount earned for one like
 - *uint256* shareRatio : token amount earned for one share
@@ -215,21 +194,6 @@ cpRatio
 
 ### enums
 
-campaign state
-- NotExists
-- Prepared
-- Running
-- Ended
-
-rewardType
-- NotExists
-- Ratio
-- Reach
-
-prom state
-- NotExists
-- Validated
-- Rejected
 
 typeSN
 - Facebook
@@ -242,17 +206,8 @@ typeSN
 `CampaignCreated(bytes32 indexed id,uint64 startDate,uint64 endDate,string dataUrl,uint8 rewardType)`
 event raised when a campaign is created
 
-`CampaignStarted(bytes32 indexed id )`
-event raised when a campaign starts
-
-`CampaignEnded(bytes32 indexed id )`
-event raised when a campaign ends
-
 `CampaignFundsSpent(bytes32 indexed id )`
 event raised when a campaign ends due to lack of funds
 
 `CampaignApplied(bytes32 indexed id ,bytes32 indexed prom )`
 event raised when an editor applies to a campaign
-
-`OracleResult( bytes32 idRequest,uint64 likes,uint64 shares,uint64 views)`
-event raised when an oracle send stat results 
