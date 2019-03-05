@@ -1,7 +1,7 @@
 # SATT
 Atayen Platform and ERC20 Token Solidity smart contract
 
-## Camapign.sol
+## Campaign.sol
 
 ### Contract methods
  
